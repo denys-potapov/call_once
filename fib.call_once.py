@@ -1,3 +1,5 @@
+import time
+
 def call_once(fn, args, cache):
     stack = {}
 
@@ -36,4 +38,19 @@ def fib_aux(n):
         return ('call', fib_1_args)
     fib_1 = fib_CACHE[fib_1_args]
     return ('result', fib_0 + fib_1)
-print(fib(100000) % 1000)
+
+def fib_fast(n):
+    lst = [0] * (n + 1)
+    lst[0] = 0
+    lst[1] = 1
+    for i in range(2, n + 1):
+        lst[i] = lst[i - 1] + lst[i - 2]
+    return lst[n]
+start = time.time()
+result = fib_fast(200000) % 1000
+end = time.time()
+print(f'fib_fast time: {end - start:.2f} seconds. Result {result}')
+start = time.time()
+result = fib(200000) % 1000
+end = time.time()
+print(f'@call_once fib time: {end - start:.2f} seconds. Result {result}')
