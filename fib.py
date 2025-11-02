@@ -1,3 +1,8 @@
+def call_once(func):
+    # placeholder will be replaced by actual code
+    return func
+
+
 # calculate fibonacci number
 @call_once
 def fib(n):

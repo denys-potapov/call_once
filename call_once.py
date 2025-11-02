@@ -133,7 +133,34 @@ def transform_body(body, func_name, cache_name):
 
 
 class CallOnceTransformer(ast.NodeTransformer):
+    def header_ast(self):
+        return ast.parse("""
+def call_once(fn, args, cache):
+    stack = {}
+
+    def push(args):
+        stack[args] = None
+
+    def pop():
+        return stack.popitem()[0]
+
+    push(args)
+    while len(stack) > 0:
+        current_args = pop()
+        (posargs, kwargs) = current_args
+        (typ, value) = fn(*posargs, **dict(kwargs))
+        if typ == "call":
+            push(current_args)
+            push(value)
+            continue
+        if typ == "result":
+            cache[current_args] = value
+    return cache[args]""").body
+
     def visit_FunctionDef(self, node):
+        if node.name == "call_once":
+            return self.header_ast()
+
         self.generic_visit(node)
 
         # Only process functions decorated with @call_once
@@ -177,33 +204,12 @@ def {func_name}(*posargs, **kwargs):
         return wrapper_ast.body + [aux_func]
 
 
-def header_ast():
-    return ast.parse("""
-def call_once(fn, args, cache):
-    stack = {}
-    stack[args] = None
-    while len(stack) > 0:
-        current_args, _ = stack.popitem()
-        (posargs, kwargs) = current_args
-
-        (typ, value) = fn(*posargs, **dict(kwargs))
-        if typ == "call":
-            stack[current_args] = None
-            stack[value] = None
-            continue
-        if typ == "result":
-            cache[current_args] = value
-
-    return cache[args]""")
-
-
 def main():
     source = sys.stdin.read()
 
     tree = ast.parse(source)
     new_tree = CallOnceTransformer().visit(tree)
     ast.fix_missing_locations(new_tree)
-    new_tree.body = header_ast().body + new_tree.body
 
     code = ast.unparse(new_tree)
     print(code)

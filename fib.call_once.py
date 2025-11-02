@@ -1,13 +1,19 @@
 def call_once(fn, args, cache):
     stack = {}
-    stack[args] = None
+
+    def push(args):
+        stack[args] = None
+
+    def pop():
+        return stack.popitem()[0]
+    push(args)
     while len(stack) > 0:
-        (current_args, _) = stack.popitem()
+        current_args = pop()
         (posargs, kwargs) = current_args
         (typ, value) = fn(*posargs, **dict(kwargs))
         if typ == 'call':
-            stack[current_args] = None
-            stack[value] = None
+            push(current_args)
+            push(value)
             continue
         if typ == 'result':
             cache[current_args] = value
