@@ -176,7 +176,7 @@ def call_once(fn, args, cache):
         current_args, _ = stack.popitem()
         (posargs, kwargs) = current_args
 
-        (typ, value) = fib_aux(*posargs, **dict(kwargs))
+        (typ, value) = fn(*posargs, **dict(kwargs))
         if typ == "call":
             stack[current_args] = None
             stack[value] = None
