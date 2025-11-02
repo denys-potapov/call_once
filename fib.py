@@ -6,4 +6,4 @@ def fib(n):
     return fib(n - 1) + fib(n - 2)
 
 
-print(fib(1_000_000))
+print(fib(100_000) % 1_000)

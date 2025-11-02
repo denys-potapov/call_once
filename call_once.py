@@ -69,47 +69,59 @@ class NodeTransformerThatReturnsList(ast.NodeTransformer):
 
 
 class AssignmentsTransformer(NodeTransformerThatReturnsList):
-    def __init__(self, assignments):
+    def __init__(self, assignments, cache_name):
         self.assignments = assignments
+        self.cache_name = cache_name
 
     def generic_visit(self, node):
-        # Visit children normally
         node = super().generic_visit(node)
 
-        # Find assignments that belong to this node
         matches = [
             (var, call) for var, call, parent in self.assignments if parent is node
         ]
         if not matches:
             return node
 
-        new_nodes = [
-            ast.Assign(
-                targets=[ast.Name(id=var, ctx=ast.Store())],
-                value=call,
-            )
-            for var, call in matches
-        ]
+        new_nodes = []
+        for var, call in matches:
+            # Build args as comma-separated source
+            args_src = ""
+            if call.args:
+                args_src = "".join(f"{ast.unparse(a)}, " for a in call.args)
+
+            # Build kwargs as tuple of (key, value) pairs
+            kwargs_src = ""
+            if call.keywords:
+                kwargs_src = "".join(
+                    f"('{kw.arg}', {ast.unparse(kw.value)}), " for kw in call.keywords
+                )
+
+            key_var = f"{var}_args"
+
+            template = f"""
+{key_var} = (({args_src}), ({kwargs_src}))
+if {key_var} not in {self.cache_name}:
+    return ("call", {key_var})
+{var} = {self.cache_name}[{key_var}]
+            """
+
+            parsed = ast.parse(template).body
+            new_nodes.extend(parsed)
+
         new_nodes.append(node)
         return new_nodes
 
 
-def transform_body(body, func_name):
+def transform_body(body, func_name, cache_name):
     # return
     transformer = ReturnTransformer()
     body = [transformer.visit(stmt) for stmt in body]
 
     call_trans = CallTransformer(func_name)
-    new_body = [call_trans.visit(stmt) for stmt in body]
-    ass_trans = AssignmentsTransformer(call_trans.assignments)
-    lifted_body = []
-    for stmt in new_body:
-        result = ass_trans.visit(stmt)
-        if isinstance(result, list):
-            lifted_body.extend(result)
-        else:
-            lifted_body.append(result)
-    return lifted_body
+    body = [call_trans.visit(stmt) for stmt in body]
+    body = AssignmentsTransformer(call_trans.assignments, cache_name).visit_list(body)
+
+    return body
 
 
 class CallOnceTransformer(ast.NodeTransformer):
@@ -135,7 +147,7 @@ class CallOnceTransformer(ast.NodeTransformer):
         aux_func = ast.FunctionDef(
             name=aux_name,
             args=node.args,
-            body=transform_body(node.body, func_name),
+            body=transform_body(node.body, func_name, cache_name),
             decorator_list=[],
             returns=node.returns,
             type_comment=None,
@@ -145,16 +157,34 @@ class CallOnceTransformer(ast.NodeTransformer):
         wrapper_code = f"""
 {cache_name} = {{}}
 
-def {func_name}(*args, **kwargs):
-    key = (args, tuple(kwargs.items()))
-    if key not in {cache_name}:
-        {cache_name}[key] = {aux_name}(*args, **kwargs)
-    return {cache_name}[key]
+def {func_name}(*posargs, **kwargs):
+    args = (posargs, tuple(kwargs.items()))
+    return call_once({aux_name}, args, {cache_name})
 """
         wrapper_ast = ast.parse(wrapper_code)
 
         # Return the new nodes (cache + wrapper + aux)
         return wrapper_ast.body + [aux_func]
+
+
+def header_ast():
+    return ast.parse("""
+def call_once(fn, args, cache):
+    stack = {}
+    stack[args] = None
+    while len(stack) > 0:
+        current_args, _ = stack.popitem()
+        (posargs, kwargs) = current_args
+
+        (typ, value) = fib_aux(*posargs, **dict(kwargs))
+        if typ == "call":
+            stack[current_args] = None
+            stack[value] = None
+            continue
+        if typ == "result":
+            cache[current_args] = value
+
+    return cache[args]""")
 
 
 def main():
@@ -163,6 +193,7 @@ def main():
     tree = ast.parse(source)
     new_tree = CallOnceTransformer().visit(tree)
     ast.fix_missing_locations(new_tree)
+    new_tree.body = header_ast().body + new_tree.body
 
     code = ast.unparse(new_tree)
     print(code)
