@@ -35,15 +35,23 @@ class CallTransformer(ast.NodeTransformer):
             var_name = f"{self.name}_{self.counter}"
             self.counter += 1
 
-            parent = self.find_closest_parent((ast.If, ast.Return))
+            parent = self.find_closest_parent()
             self.assignments.append((var_name, node, parent))
 
             return ast.Name(id=var_name, ctx=ast.Load())
         return node
 
-    def find_closest_parent(self, types):
+    def find_closest_parent(self):
+        valid_types = (
+            ast.If,
+            ast.Return,
+            ast.Assign,
+            ast.AnnAssign,
+            ast.AugAssign,
+            ast.Expr,
+        )
         for n in reversed(self.parent_stack):
-            if isinstance(n, types):
+            if isinstance(n, valid_types):
                 return n
         return None
 
@@ -126,6 +134,8 @@ def transform_body(body, func_name, cache_name):
 
 class CallOnceTransformer(ast.NodeTransformer):
     def visit_FunctionDef(self, node):
+        self.generic_visit(node)
+
         # Only process functions decorated with @call_once
         if not any(
             isinstance(d, ast.Name) and d.id == "call_once" for d in node.decorator_list
