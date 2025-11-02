@@ -1,7 +1,9 @@
 # call_once
 python macro for deep recursion
 
-  python3 call_once.py < fib.py > fib.call_once.py
+```
+    python3 call_once.py < fib.py > fib.call_once.py
+```
 
 ## Sample
 
