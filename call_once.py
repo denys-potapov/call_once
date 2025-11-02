@@ -147,6 +147,8 @@ def call_once(fn, args, cache):
     push(args)
     while len(stack) > 0:
         current_args = pop()
+        if current_args in cache:
+            continue
         (posargs, kwargs) = current_args
         (typ, value) = fn(*posargs, **dict(kwargs))
         if typ == "call":
